@@ -1,10 +1,13 @@
-name: Build Joplin Win-ARM64 24
-on: 
-  workflow_dispatch:
+name: Joplin Windows ARM64 Manual Build 24
+
+on:
+  workflow_dispatch: # 手动在 GitHub Actions 页面点击运行
 
 jobs:
-  build_windows_arm64:
-    runs-on: windows-2025 
+  build-arm64:
+    # 使用 windows-2025 以获取最新的 ARM64 交叉编译工具链
+    runs-on: windows-2025
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -12,39 +15,58 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 24 # 使用 v20 解决 v18 下 arm64 库文件 404 的问题
           cache: 'yarn'
 
-      - name: Install Global Dependencies
+      - name: Install Global Tools
         run: npm install -g gulp-cli
 
-      - name: Install Project Dependencies
-        # 强制 Node 预编译工具链指向 arm64
+      - name: Install Dependencies
+        # 核心：在安装阶段就强制所有原生模块（sqlite3, keytar）按 arm64 编译
         env:
           npm_config_arch: arm64
-        run: yarn install --frozen-lockfile
+          npm_config_build_from_source: true # 强制从源码编译，防止它去下载 x64 的预编译包
+        run: |
+          yarn config set npm_config_arch arm64
+          yarn install --frozen-lockfile
 
-      - name: Build Joplin Internal Packages
+      - name: Build Joplin Sub-Packages
+        # Joplin 必须按顺序编译子包，桌面端才能运行
         env:
           npm_config_arch: arm64
-        run: yarn run build
+        run: |
+          # 1. 编译核心逻辑库
+          cd packages/lib
+          gulp build
+          # 2. 编译渲染引擎
+          cd ../renderer
+          gulp build
+          # 3. 编译工具库
+          cd ../tools
+          gulp build
 
       - name: Package Desktop App for ARM64
         env:
-          CSC_LINK_IGNORE: true # 跳过签名
+          # 关键环境变量
           npm_config_arch: arm64
-          SIGN_APPLICATION: 0
-          ELECTRON_BUILDER_ALLOW_GITHUB_AUTO_PUBLISH: false
+          SIGN_APPLICATION: 0        # 告诉 sign.js 不要签名
+          CSC_LINK_IGNORE: true      # 告诉 electron-builder 忽略证书
+          # 禁用自动发布到 GitHub Release
+          ELECTRON_BUILDER_ALLOW_GITHUB_AUTO_PUBLISH: false 
         run: |
           cd packages/app-desktop
-          # 这里不直接运行 yarn dist，因为我们要手动注入 --arm64 参数给 electron-builder
-          # 拆解 Joplin 的 dist 命令并注入架构参数：
+          # 运行桌面端专属预处理
+          yarn gulp build
           yarn gulp before-dist
+          # 针对 Electron 环境重构原生模块
           yarn electronRebuild --arch arm64
+          # 最终打包命令：显式指定 win 和 arm64
           npx electron-builder --win --arm64
 
-      - name: Upload ARM64 Artifact
+      - name: Upload ARM64 EXE
         uses: actions/upload-artifact@v4
         with:
-          name: Joplin-Windows-ARM64
+          name: Joplin-Windows-ARM64-Package
+          # 对应打包后的输出路径
           path: packages/app-desktop/dist/*.exe
+          if-no-files-found: error
