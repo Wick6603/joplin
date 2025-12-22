@@ -1,4 +1,4 @@
-name: Build Joplin Win-ARM64
+name: Build Joplin Win-ARM64 24
 on: 
   workflow_dispatch:
 
