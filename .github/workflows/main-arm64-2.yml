@@ -22,28 +22,32 @@ jobs:
         run: npm install -g gulp-cli
 
       - name: Install Dependencies
-        # 核心：在安装阶段就强制所有原生模块（sqlite3, keytar）按 arm64 编译
         env:
+          # 告诉所有包：我们要的是 arm64
           npm_config_arch: arm64
-          npm_config_build_from_source: true # 强制从源码编译，防止它去下载 x64 的预编译包
+          # 确保 sharp 知道去哪里下载预编译的 libvips 库
+          SHARP_IGNORE_GLOBAL_LIBVIPS: 1
         run: |
-          yarn config set npm_config_arch arm64
-          yarn install --frozen-lockfile
+          # 1. 正常安装。Sharp 会识别 arm64 并尝试下载它自己的 prebuilt 
+          # 而 sqlite3 如果找不到 prebuilt，在这一步可能会跳过或报错，没关系
+          yarn install --immutable
 
       - name: Build Joplin Sub-Packages
-        # Joplin 必须按顺序编译子包，桌面端才能运行
         env:
           npm_config_arch: arm64
         run: |
-          # 1. 编译核心逻辑库
-          cd packages/lib
-          gulp build
-          # 2. 编译渲染引擎
-          cd ../renderer
-          gulp build
-          # 3. 编译工具库
-          cd ../tools
-          gulp build
+          cd packages/lib && gulp build
+          cd ../renderer && gulp build
+          cd ../tools && gulp build
+
+      - name: Targeted Rebuild for Native Modules
+        env:
+          npm_config_arch: arm64
+        run: |
+          cd packages/app-desktop
+          # 关键：我们只对 sqlite3 和 keytar 进行强制重编译
+          # 这不会干扰已经通过下载安装好的 sharp
+          npx @electron/rebuild --arch arm64 --only sqlite3,keytar
 
       - name: Package Desktop App for ARM64
         env:
