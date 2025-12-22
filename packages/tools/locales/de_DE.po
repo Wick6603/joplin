@@ -161,7 +161,7 @@ msgstr[1] "%d Minuten"
 #: packages/app-cli/app/command-rmnote.ts:34
 msgid "%d note matches this pattern. Delete it?"
 msgid_plural "%d notes match this pattern. Delete them?"
-msgstr[0] "%d Notize stimmt mit diesem Muster überein. Löschen?"
+msgstr[0] "%d Notiz stimmt mit diesem Muster überein. Löschen?"
 msgstr[1] "%d Notizen stimmen mit diesem Muster überein. Löschen?"
 
 #: packages/app-cli/app/command-rmnote.ts:40
@@ -2154,7 +2154,7 @@ msgstr "Duplizieren"
 #: packages/app-desktop/gui/NoteEditor/editorCommandDeclarations.ts:114
 #: packages/app-mobile/components/NoteEditor/commandDeclarations.ts:128
 msgid "Duplicate line"
-msgstr "Dupliziere Zeile"
+msgstr "Zeile duplizieren"
 
 #: packages/app-mobile/components/ScreenHeader/index.tsx:526
 msgid "Duplicate selected notes"
@@ -2343,7 +2343,7 @@ msgstr "Verschlüsselung aktivieren"
 
 #: packages/lib/models/settings/builtInMetadata.ts:1116
 msgid "Enable file:// URLs for images and videos"
-msgstr "Aktiviere file://-URLs für Bilder und Videos"
+msgstr "URLs mit file:// für Bilder und Videos aktivieren"
 
 #: packages/lib/models/settings/builtInMetadata.ts:1097
 msgid "Enable footnotes"
@@ -3760,7 +3760,7 @@ msgstr "Markdown-Editor: Bilder darstellen"
 
 #: packages/lib/models/settings/builtInMetadata.ts:1494
 msgid "Markdown editor: Render markup in editor"
-msgstr "Markdown-Editor: Auszeichnungen im Editor darstellen"
+msgstr "Markdown-Editor: Markup im Editor darstellen"
 
 #: packages/app-cli/app/command-done.ts:15
 msgid "Marks a to-do as done."
@@ -5102,8 +5102,7 @@ msgstr "Benennt das angegebene <item> (Notiz oder Notizbuch) zu <name> um."
 
 #: packages/lib/models/settings/builtInMetadata.ts:1495
 msgid "Renders markup on all lines that don't include the cursor."
-msgstr ""
-"Stellt Auszeichnungen in allen Zeilen dar, die den Cursor nicht enthalten."
+msgstr "Rendert Markup in allen Zeilen, die den Cursor nicht enthalten."
 
 #: packages/app-desktop/gui/ClipperConfigScreen.tsx:162
 msgid "Renew token"
@@ -5766,7 +5765,7 @@ msgstr "Notizbücher sortieren nach"
 #: packages/app-mobile/components/ScreenHeader/index.tsx:542
 #: packages/lib/models/settings/builtInMetadata.ts:722
 msgid "Sort notes by"
-msgstr "Sortiere Notizen nach"
+msgstr "Notizen sortieren nach"
 
 #: packages/app-desktop/gui/NoteEditor/editorCommandDeclarations.ts:138
 #: packages/app-mobile/components/NoteEditor/commandDeclarations.ts:133
@@ -7001,9 +7000,9 @@ msgid ""
 "Uninstall and reinstall the application. Make sure you create a backup first "
 "by exporting all your notes as JEX from the desktop application."
 msgstr ""
-"Deinstalliere die Anwendung und installieren sie dann neu. Stelle sicher, "
-"dass du zuerst ein Backup erstellst, indem du alle Notizen als JEX aus der "
-"Desktop-Anwendung exportierst."
+"Deinstalliere die Anwendung und installiere sie erneut. Erstelle zuvor "
+"unbedingt ein Backup, indem du alle deine Notizen aus der Desktop-Anwendung "
+"als JEX exportierst."
 
 #: packages/app-mobile/utils/getVersionInfoText.ts:13
 #: packages/app-mobile/utils/getVersionInfoText.ts:14
