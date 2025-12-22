@@ -1,0 +1,44 @@
+name: Build Joplin Win-ARM64
+on: 
+  workflow_dispatch: # 手动触发
+
+jobs:
+  build_windows_arm64:
+    runs-on: windows-2025 # 建议用最新版，ARM64 编译工具链最全
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'yarn'
+
+      - name: Install Dependencies
+        # 注入环境变量，确保原生模块（如sqlite3）在安装时就按 arm64 编译
+        env:
+          npm_config_arch: arm64
+        run: yarn install --frozen-lockfile
+
+      - name: Build Joplin Internal Packages
+        # Joplin 是 Monorepo，必须先编译内部依赖包（如 @joplin/lib）
+        env:
+          npm_config_arch: arm64
+        run: yarn run build
+
+      - name: Package Desktop App for ARM64
+        env:
+          CSC_LINK_IGNORE: true # 跳过签名
+          npm_config_arch: arm64 # 再次确保环境变量生效
+        run: |
+          cd packages/app-desktop
+          # 显式指定 --arm64 参数
+          npx electron-builder --win --arm64
+
+      - name: Upload ARM64 Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Joplin-Windows-ARM64-Exes
+          path: packages/app-desktop/dist/*.exe
