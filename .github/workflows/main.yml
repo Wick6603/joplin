@@ -1,34 +1,39 @@
-name: Joplin Continuous Integration
-on: workflow_dispatch
+name: Build Electron x64
+on: 
+  workflow_dispatch: # 手动触发测试
+
 jobs:
-  Main:
-    # We always process server or desktop release tags, because they also publish the release
-    if: github.repository == 'Wick6603/joplin'
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        # Do not use unbuntu-latest because it causes `The operation was canceled` failures:
-        # https://github.com/actions/runner-images/issues/6709
-        os: [macos-15-intel, ubuntu-22.04, windows-2025, ubuntu-22.04-arm]
+  build_windows_x64:
+    runs-on: windows-latest
+    
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-      - name: Setup build environment
-        uses: ./.github/workflows/shared/setup-build-environment
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18 # 或者 Joplin 要求的版本
+          cache: 'yarn'
 
-      
-      - name: Build and publish Windows app
-        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')
+      - name: Install Dependencies
+        # 使用 --frozen-lockfile 确保依赖版本锁定，避免意外错误
+        run: yarn install --frozen-lockfile
+
+      - name: Build and Distribute
+        # 1. 设置环境变量跳过签名（测试不需要）
+        # 2. 进入桌面版包路径
+        # 3. 执行打包命令并强制指定 x64
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          IS_CONTINUOUS_INTEGRATION: 1
-          BUILD_SEQUENCIAL: 1
-          SSL_ESIGNER_USER_NAME: ${{ secrets.SSL_ESIGNER_USER_NAME }}
-          SSL_ESIGNER_USER_PASSWORD: ${{ secrets.SSL_ESIGNER_USER_PASSWORD }}
-          SSL_ESIGNER_CREDENTIAL_ID: ${{ secrets.SSL_ESIGNER_CREDENTIAL_ID }}
-          SSL_ESIGNER_USER_TOTP: ${{ secrets.SSL_ESIGNER_USER_TOTP }}
-          SIGN_APPLICATION: 0
-        # To ensure that the operations stop on failure, all commands
-        # should be on one line with "&&" in between.
+          CSC_LINK_IGNORE: true # 忽略代码签名证书
+          ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
+          ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
         run: |
-          yarn install && cd packages/app-desktop && yarn dist
+          cd packages/app-desktop
+          yarn dist --x64
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Joplin-x64-Windows
+          path: packages/app-desktop/dist/*.exe
