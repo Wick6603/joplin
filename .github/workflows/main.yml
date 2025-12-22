@@ -1,11 +1,12 @@
-name: Build Electron x64
-on: 
-  workflow_dispatch: # 手动触发测试
+name: Joplin Windows x64 Manual Build 20
+
+on:
+  workflow_dispatch: # 手动在 GitHub Actions 页面点击运行
 
 jobs:
-  build_windows_x64:
+  build-x64:
     runs-on: windows-latest
-    
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -13,28 +14,47 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18 # 或者 Joplin 要求的版本
+          node-version: 20 # x64 版本使用官方推荐的 v18 即可
           cache: 'yarn'
 
-      - name: Install Dependencies
-        # 使用 --frozen-lockfile 确保依赖版本锁定，避免意外错误
-        run: yarn install --frozen-lockfile
+      - name: Install Global Tools
+        run: npm install -g gulp-cli
 
-      - name: Build and Distribute
-        # 1. 设置环境变量跳过签名（测试不需要）
-        # 2. 进入桌面版包路径
-        # 3. 执行打包命令并强制指定 x64
+      - name: Install Dependencies
+        # x64 环境下通常不需要额外的 npm_config 变量
+        run: |
+          yarn install --frozen-lockfile
+
+      - name: Build Joplin Sub-Packages
+        run: |
+          # 1. 编译核心逻辑库
+          cd packages/lib
+          gulp build
+          # 2. 编译渲染引擎
+          cd ../renderer
+          gulp build
+          # 3. 编译工具库
+          cd ../tools
+          gulp build
+
+      - name: Package Desktop App for x64
         env:
-          CSC_LINK_IGNORE: true # 忽略代码签名证书
-          ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
-          ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
-          ELECTRON_BUILDER_ALLOW_GITHUB_AUTO_PUBLISH: false
+          SIGN_APPLICATION: 0        # 禁用 sign.js 签名
+          CSC_LINK_IGNORE: true      # 忽略 electron-builder 证书检查
+          ELECTRON_BUILDER_ALLOW_GITHUB_AUTO_PUBLISH: false # 禁用自动发布
         run: |
           cd packages/app-desktop
-          yarn dist --x64
+          # 运行桌面端专属构建
+          yarn gulp build
+          yarn gulp before-dist
+          # 针对 Electron 重新编译原生模块 (x64)
+          yarn electronRebuild --arch x64
+          # 打包命令：强制指定 x64
+          npx electron-builder --win --x64
 
-      - name: Upload Artifact
+      - name: Upload x64 EXE
         uses: actions/upload-artifact@v4
         with:
-          name: Joplin-x64-Windows
+          name: Joplin-Windows-x64-Package
           path: packages/app-desktop/dist/*.exe
+          if-no-files-found: error
