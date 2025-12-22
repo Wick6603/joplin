@@ -28,6 +28,7 @@ jobs:
           CSC_LINK_IGNORE: true # 忽略代码签名证书
           ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
           ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
+          ELECTRON_BUILDER_ALLOW_GITHUB_AUTO_PUBLISH: false
         run: |
           cd packages/app-desktop
           yarn dist --x64
