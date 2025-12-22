@@ -32,13 +32,13 @@ jobs:
           # 而 sqlite3 如果找不到 prebuilt，在这一步可能会跳过或报错，没关系
           yarn install --immutable
 
-      - name: Build Joplin Sub-Packages
-        env:
-          npm_config_arch: arm64
-        run: |
-          cd packages/lib && gulp build
-          cd ../renderer && gulp build
-          cd ../tools && gulp build
+      # - name: Build Joplin Sub-Packages
+      #   env:
+      #     npm_config_arch: arm64
+      #   run: |
+      #     cd packages/lib && gulp build
+      #     cd ../renderer && gulp build
+      #     cd ../tools && gulp build
 
       - name: Targeted Rebuild for Native Modules
         env:
@@ -47,7 +47,7 @@ jobs:
           cd packages/app-desktop
           # 关键：我们只对 sqlite3 和 keytar 进行强制重编译
           # 这不会干扰已经通过下载安装好的 sharp
-          npx @electron/rebuild --arch arm64 --only sqlite3,keytar
+          npx @electron/rebuild --arch arm64 --only sqlite3
 
       - name: Package Desktop App for ARM64
         env:
