@@ -1,11 +1,10 @@
-name: Build Joplin Win-ARM64
+name: Build Joplin Win-ARM64 20
 on: 
-  workflow_dispatch: # 手动触发
+  workflow_dispatch:
 
 jobs:
   build_windows_arm64:
-    runs-on: windows-2025 # 建议用最新版，ARM64 编译工具链最全
-    
+    runs-on: windows-2025 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -13,17 +12,19 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           cache: 'yarn'
 
-      - name: Install Dependencies
-        # 注入环境变量，确保原生模块（如sqlite3）在安装时就按 arm64 编译
+      - name: Install Global Dependencies
+        run: npm install -g gulp-cli
+
+      - name: Install Project Dependencies
+        # 强制 Node 预编译工具链指向 arm64
         env:
           npm_config_arch: arm64
         run: yarn install --frozen-lockfile
 
       - name: Build Joplin Internal Packages
-        # Joplin 是 Monorepo，必须先编译内部依赖包（如 @joplin/lib）
         env:
           npm_config_arch: arm64
         run: yarn run build
@@ -31,14 +32,17 @@ jobs:
       - name: Package Desktop App for ARM64
         env:
           CSC_LINK_IGNORE: true # 跳过签名
-          npm_config_arch: arm64 # 再次确保环境变量生效
+          npm_config_arch: arm64
         run: |
           cd packages/app-desktop
-          # 显式指定 --arm64 参数
+          # 这里不直接运行 yarn dist，因为我们要手动注入 --arm64 参数给 electron-builder
+          # 拆解 Joplin 的 dist 命令并注入架构参数：
+          yarn gulp before-dist
+          yarn electronRebuild --arch arm64
           npx electron-builder --win --arm64
 
       - name: Upload ARM64 Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Joplin-Windows-ARM64-Exes
+          name: Joplin-Windows-ARM64
           path: packages/app-desktop/dist/*.exe
