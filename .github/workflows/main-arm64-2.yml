@@ -1,0 +1,48 @@
+name: Build Joplin Win-ARM64 2
+on: 
+  workflow_dispatch:
+
+jobs:
+  build_windows_arm64:
+    runs-on: windows-2025 
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'yarn'
+
+      - name: Install Global Dependencies
+        run: npm install -g gulp-cli
+
+      - name: Install Project Dependencies
+        # 强制 Node 预编译工具链指向 arm64
+        env:
+          npm_config_arch: arm64
+        run: yarn install --frozen-lockfile
+
+      - name: Build Joplin Internal Packages
+        env:
+          npm_config_arch: arm64
+        run: yarn run build
+
+      - name: Package Desktop App for ARM64
+        env:
+          CSC_LINK_IGNORE: true # 跳过签名
+          npm_config_arch: arm64
+        run: |
+          cd packages/app-desktop
+          # 这里不直接运行 yarn dist，因为我们要手动注入 --arm64 参数给 electron-builder
+          # 拆解 Joplin 的 dist 命令并注入架构参数：
+          yarn gulp before-dist
+          yarn electronRebuild --arch arm64
+          npx electron-builder --win --arm64
+
+      - name: Upload ARM64 Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Joplin-Windows-ARM64
+          path: packages/app-desktop/dist/*.exe
