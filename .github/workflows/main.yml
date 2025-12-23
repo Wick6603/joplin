@@ -33,9 +33,9 @@ jobs:
           # 2. 编译渲染引擎
           cd ../renderer
           gulp build
-          # 3. 编译工具库
-          cd ../tools
-          gulp build
+          # # 3. 编译工具库
+          # cd ../tools
+          # gulp build
 
       - name: Package Desktop App for x64
         env:
@@ -44,11 +44,11 @@ jobs:
           ELECTRON_BUILDER_ALLOW_GITHUB_AUTO_PUBLISH: false # 禁用自动发布
         run: |
           cd packages/app-desktop
-          # 运行桌面端专属构建
-          yarn gulp build
-          yarn gulp before-dist
-          # 针对 Electron 重新编译原生模块 (x64)
-          yarn electronRebuild --arch x64
+          # # 运行桌面端专属构建
+          # yarn gulp build
+          # yarn gulp before-dist
+          # # 针对 Electron 重新编译原生模块 (x64)
+          # yarn electronRebuild --arch x64
           # 打包命令：强制指定 x64
           npx electron-builder --win --x64
 
