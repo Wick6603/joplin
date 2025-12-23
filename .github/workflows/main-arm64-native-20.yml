@@ -23,19 +23,9 @@ jobs:
       - name: Install Dependencies
         # x64 环境下通常不需要额外的 npm_config 变量
         run: |
-          yarn install --frozen-lockfile
+          yarn install
 
-      - name: Build Joplin Sub-Packages
-        run: |
-          # 1. 编译核心逻辑库
-          cd packages/lib
-          gulp build
-          # 2. 编译渲染引擎
-          cd ../renderer
-          gulp build
-          # # 3. 编译工具库
-          # cd ../tools
-          # gulp build
+      
 
       - name: Package Desktop App for x64
         env:
@@ -50,7 +40,7 @@ jobs:
           # # 针对 Electron 重新编译原生模块 (x64)
           # yarn electronRebuild --arch x64
           # 打包命令：强制指定 x64
-          npx electron-builder --win --arm64
+          yarn dist
 
       - name: Upload x64 EXE
         uses: actions/upload-artifact@v4
