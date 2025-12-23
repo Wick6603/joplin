@@ -1,4 +1,4 @@
-name: Joplin Windows arm64 Native Manual Build 20
+name: Joplin Windows arm64 Native Manual Build 22
 
 on:
   workflow_dispatch: # 手动在 GitHub Actions 页面点击运行
@@ -14,7 +14,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20 # x64 版本使用官方推荐的 v18 即可
+          node-version: 22 # x64 版本使用官方推荐的 v18 即可
 
 
       - name: Install Dependencies
@@ -22,11 +22,12 @@ jobs:
 
       
 
-      - name: Package Desktop App for x64
+      - name: Package Desktop App for ARM64
         env:
           SIGN_APPLICATION: 0        # 禁用 sign.js 签名
           CSC_LINK_IGNORE: true      # 忽略 electron-builder 证书检查
           ELECTRON_BUILDER_ALLOW_GITHUB_AUTO_PUBLISH: false # 禁用自动发布
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           cd packages/app-desktop
           # # 运行桌面端专属构建
@@ -37,9 +38,13 @@ jobs:
           # 打包命令：强制指定 x64
           yarn dist
 
-      - name: Upload x64 EXE
+      - name: Upload Windows Packages
         uses: actions/upload-artifact@v4
         with:
-          name: Joplin-Windows-arm64-Package
-          path: packages/app-desktop/dist/*.exe
+          name: Joplin-Windows-All-Packages
+          # 使用通配符匹配所有生成的安装包格式
+          path: |
+            packages/app-desktop/dist/*.exe
+            packages/app-desktop/dist/*.msi
+            packages/app-desktop/dist/*.appx
           if-no-files-found: error
