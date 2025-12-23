@@ -76,11 +76,12 @@
       ]
     },
     "nsis": {
+      "artifactName": "${productName}-Setup-${version}.${ext}",
       "oneClick": false,
-      "allowToChangeInstallationDirectory": false
+      "allowToChangeInstallationDirectory": true
     },
     "portable": {
-      "artifactName": "${productName}Portable.${ext}"
+      "artifactName": "${productName}-Portable-${version}.${ext}"
     },
     "mac": {
       "icon": "../../Assets/macOs.icns",

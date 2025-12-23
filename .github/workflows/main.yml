@@ -37,9 +37,13 @@ jobs:
           # 打包命令：强制指定 x64
           yarn dist
 
-      - name: Upload x64 EXE
+      - name: Upload Windows Packages
         uses: actions/upload-artifact@v4
         with:
-          name: Joplin-Windows-x64-Package
-          path: packages/app-desktop/dist/*.exe
+          name: Joplin-Windows-All-Packages
+          # 使用通配符匹配所有生成的安装包格式
+          path: |
+            packages/app-desktop/dist/*.exe
+            packages/app-desktop/dist/*.msi
+            packages/app-desktop/dist/*.appx
           if-no-files-found: error
