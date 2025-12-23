@@ -1,11 +1,11 @@
-name: Joplin Windows x64 Manual Build 20
+name: Joplin Windows X64 Native Manual Build 20
 
 on:
   workflow_dispatch: # 手动在 GitHub Actions 页面点击运行
 
 jobs:
   build-x64:
-    runs-on: windows-latest
+    runs-on: windows-2025
 
     steps:
       - name: Checkout Code
@@ -15,27 +15,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20 # x64 版本使用官方推荐的 v18 即可
-          cache: 'yarn'
 
-      - name: Install Global Tools
-        run: npm install -g gulp-cli
 
       - name: Install Dependencies
-        # x64 环境下通常不需要额外的 npm_config 变量
-        run: |
-          yarn install --frozen-lockfile
+        run:  yarn install --no-immutable
 
-      - name: Build Joplin Sub-Packages
-        run: |
-          # 1. 编译核心逻辑库
-          cd packages/lib
-          gulp build
-          # 2. 编译渲染引擎
-          cd ../renderer
-          gulp build
-          # # 3. 编译工具库
-          # cd ../tools
-          # gulp build
+      
 
       - name: Package Desktop App for x64
         env:
@@ -50,7 +35,7 @@ jobs:
           # # 针对 Electron 重新编译原生模块 (x64)
           # yarn electronRebuild --arch x64
           # 打包命令：强制指定 x64
-          npx electron-builder --win --x64
+          yarn dist
 
       - name: Upload x64 EXE
         uses: actions/upload-artifact@v4
