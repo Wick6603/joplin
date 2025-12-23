@@ -40,15 +40,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           cd packages/app-desktop
-          # 1. 运行 Gulp 预构建任务
-          gulp before-dist
-
-          # 2. 针对当前架构重新编译原生模块 (关键步骤)
-          # --arch 指定架构，防止在 x64 机器上为 arm64 打包时链接错误
-          yarn electron-rebuild --arch ${{ matrix.arch }}
-
-          # 3. 运行打包，并传入架构参数
-          npx electron-builder --win --${{ matrix.arch }} -c.publish=always
+          yarn dist
           
 
       - name: Upload Windows Packages (${{ matrix.arch }})

@@ -18,7 +18,7 @@ jobs:
 
 
       - name: Install Dependencies
-        run:  cd packages/app-desktop && yarn install --no-immutable
+        run:  yarn install --no-immutable
 
       
 
@@ -29,7 +29,7 @@ jobs:
           ELECTRON_BUILDER_ALLOW_GITHUB_AUTO_PUBLISH: false # 禁用自动发布
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          #cd packages/app-desktop
+          cd packages/app-desktop
           # # 运行桌面端专属构建
           # yarn gulp build
           # yarn gulp before-dist
