@@ -4,7 +4,7 @@ on:
   workflow_dispatch: # 手动在 GitHub Actions 页面点击运行
 
 jobs:
-  build-x64:
+  build-arm64:
     runs-on: windows-11-arm
 
     steps:
@@ -22,8 +22,7 @@ jobs:
 
       - name: Install Dependencies
         # x64 环境下通常不需要额外的 npm_config 变量
-        run: |
-          yarn install
+        run:  yarn install
 
       
 
