@@ -1,0 +1,60 @@
+name: Joplin Windows arm64 Native Manual Build 20
+
+on:
+  workflow_dispatch: # 手动在 GitHub Actions 页面点击运行
+
+jobs:
+  build-x64:
+    runs-on: windows-11-arm
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20 # x64 版本使用官方推荐的 v18 即可
+          cache: 'yarn'
+
+      - name: Install Global Tools
+        run: npm install -g gulp-cli
+
+      - name: Install Dependencies
+        # x64 环境下通常不需要额外的 npm_config 变量
+        run: |
+          yarn install --frozen-lockfile
+
+      - name: Build Joplin Sub-Packages
+        run: |
+          # 1. 编译核心逻辑库
+          cd packages/lib
+          gulp build
+          # 2. 编译渲染引擎
+          cd ../renderer
+          gulp build
+          # # 3. 编译工具库
+          # cd ../tools
+          # gulp build
+
+      - name: Package Desktop App for x64
+        env:
+          SIGN_APPLICATION: 0        # 禁用 sign.js 签名
+          CSC_LINK_IGNORE: true      # 忽略 electron-builder 证书检查
+          ELECTRON_BUILDER_ALLOW_GITHUB_AUTO_PUBLISH: false # 禁用自动发布
+        run: |
+          cd packages/app-desktop
+          # # 运行桌面端专属构建
+          # yarn gulp build
+          # yarn gulp before-dist
+          # # 针对 Electron 重新编译原生模块 (x64)
+          # yarn electronRebuild --arch x64
+          # 打包命令：强制指定 x64
+          npx electron-builder --win --arm64
+
+      - name: Upload x64 EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: Joplin-Windows-arm64-Package
+          path: packages/app-desktop/dist/*.exe
+          if-no-files-found: error
