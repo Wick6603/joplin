@@ -54,7 +54,7 @@
     "rate-limiter-flexible": "7.2.0",
     "raw-body": "3.0.1",
     "samlify": "2.10.1",
-    "sqlite3": "npm:@appthreat/sqlite3@^7.0.2",
+    "sqlite3": "5.1.6",
     "stripe": "8.222.0",
     "uuid": "11.1.0",
     "yargs": "17.7.2",
