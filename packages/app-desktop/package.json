@@ -204,6 +204,6 @@
     "fs-extra": "11.3.2",
     "keytar": "7.9.0",
     "node-fetch": "2.6.7",
-    "@appthreat/sqlite3": "7.0.2"
+    "sqlite3": "npm:@appthreat/sqlite3@^7.0.2"
   }
 }

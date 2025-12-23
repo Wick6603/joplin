@@ -62,7 +62,7 @@
     "js-yaml": "4.1.1",
     "rss": "1.2.2",
     "sass": "1.93.1",
-    "@appthreat/sqlite3": "7.0.2",
+    "sqlite3": "npm:@appthreat/sqlite3@^7.0.2",
     "style-to-js": "1.1.17",
     "ts-node": "10.9.2",
     "typescript": "5.8.3"
