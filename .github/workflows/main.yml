@@ -4,8 +4,18 @@ on:
   workflow_dispatch: # 手动在 GitHub Actions 页面点击运行
 
 jobs:
-  build-x64:
-    runs-on: windows-2025
+  build: 
+    name: Build (${{ matrix.os }} - ${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            arch: x64
+          - os: windows-11-arm
+            arch: arm64
 
     steps:
       - name: Checkout Code
