@@ -24,7 +24,7 @@
     "koa-body": "6.0.1",
     "pg-boss": "10.3.3",
     "sharp": "0.34.4",
-    "sqlite3": "5.1.6"
+    "@appthreat/sqlite3": "7.0.2"
   },
   "devDependencies": {
     "@joplin/tools": "~3.5",
