@@ -40,21 +40,22 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           cd packages/app-desktop
-          # # 运行桌面端专属构建
-          # yarn gulp build
-          # yarn gulp before-dist
-          # # 针对 Electron 重新编译原生模块 (x64)
-          # yarn electronRebuild --arch x64
-          # 打包命令：强制指定 x64
-          yarn dist
+          # 1. 运行 Gulp 预构建任务
+          gulp before-dist
 
-      - name: Upload Windows Packages
+          # 2. 针对当前架构重新编译原生模块 (关键步骤)
+          # --arch 指定架构，防止在 x64 机器上为 arm64 打包时链接错误
+          yarn electron-rebuild --arch ${{ matrix.arch }}
+
+          # 3. 运行打包，并传入架构参数
+          npx electron-builder --win --${{ matrix.arch }} -c.publish=always
+          
+
+      - name: Upload Windows Packages (${{ matrix.arch }})
         uses: actions/upload-artifact@v4
         with:
-          name: Joplin-Windows-All-Packages
-          # 使用通配符匹配所有生成的安装包格式
-          path: |
-            packages/app-desktop/dist/*.exe
-            packages/app-desktop/dist/*.msi
-            packages/app-desktop/dist/*.appx
-          if-no-files-found: error
+         # 確保每個架構的 Artifact 容器名稱唯一
+         name: Joplin-Windows-${{ matrix.arch }}
+         path: |
+           packages/app-desktop/dist/*-${{ matrix.arch }}.exe
+         if-no-files-found: error
