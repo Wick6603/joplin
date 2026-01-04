@@ -1,4 +1,4 @@
-name: Joplin Windows Native Manual Build Node.JS 22
+name: Joplin Windows Native Manual Build Node.JS 24
 
 on:
   workflow_dispatch: # 手动在 GitHub Actions 页面点击运行
@@ -24,7 +24,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22 # x64 版本使用官方推荐的 v18 即可
+          node-version: 24 # x64 版本使用官方推荐的 v18 即可
 
 
       - name: Install Dependencies
