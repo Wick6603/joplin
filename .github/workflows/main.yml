@@ -21,10 +21,13 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # setup-node 会根据 runner.os 和 yarn.lock 自动隔离缓存
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24 # x64 版本使用官方推荐的 v18 即可
+          node-version: '24'
+          architecture: ${{ matrix.arch }}
+          cache: 'yarn'
 
 
       - name: Install Dependencies
@@ -40,7 +43,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           cd packages/app-desktop
-          yarn dist yarn dist --${{ matrix.arch }}
+          yarn dist --${{ matrix.arch }}
           
 
       - name: Upload Windows Packages (${{ matrix.arch }})
