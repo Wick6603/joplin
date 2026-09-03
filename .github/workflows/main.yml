@@ -1,0 +1,53 @@
+name: Joplin Windows Native Manual Build Node.JS 24
+
+on:
+  workflow_dispatch: # 手动在 GitHub Actions 页面点击运行
+
+jobs:
+  build: 
+    name: Build (${{ matrix.os }} - ${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            arch: x64
+          - os: windows-11-arm
+            arch: arm64
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24 # x64 版本使用官方推荐的 v18 即可
+
+
+      - name: Install Dependencies
+        run:  yarn install --no-immutable
+
+      
+
+      - name: Package Desktop App for Windows
+        env:
+          SIGN_APPLICATION: 0        # 禁用 sign.js 签名
+          CSC_LINK_IGNORE: true      # 忽略 electron-builder 证书检查
+          ELECTRON_BUILDER_ALLOW_GITHUB_AUTO_PUBLISH: false # 禁用自动发布
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          cd packages/app-desktop
+          yarn dist
+          
+
+      - name: Upload Windows Packages (${{ matrix.arch }})
+        uses: actions/upload-artifact@v4
+        with:
+         # 確保每個架構的 Artifact 容器名稱唯一
+         name: Joplin-Windows-${{ matrix.arch }}
+         path: |
+           packages/app-desktop/dist/*-${{ matrix.arch }}.exe
+         if-no-files-found: error
