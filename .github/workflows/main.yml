@@ -40,7 +40,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           cd packages/app-desktop
-          yarn dist
+          yarn dist yarn dist --${{ matrix.arch }}
           
 
       - name: Upload Windows Packages (${{ matrix.arch }})
