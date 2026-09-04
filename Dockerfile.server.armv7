@@ -1,0 +1,189 @@
+# =============================================================================
+# Joplin Server —— linux/arm/v7 (armhf, 32-bit) 交叉构建版
+#
+# 用法（需要 Docker Buildx + QEMU）：
+#   docker buildx build --platform linux/arm/v7 \
+#       -f Dockerfile.server.armv7 -t joplin-server:armv7 .
+#
+# 与官方 Dockerfile.server 的核心区别：
+#   1. TypeScript 编译（yarn install -> postinstall -> gulp build -> yarn tsc）
+#      放在 BUILDPLATFORM（x86）原生执行。这是整个构建里最吃内存的一步，
+#      32 位机器上并行 tsc 会 OOM，在 x86 上跑就完全没这个问题。
+#      产物 dist/*.js 是纯 JavaScript，架构无关，可以直接给 armv7 用。
+#   2. 只有 sqlite3 的 node-gyp 源码编译在 TARGETPLATFORM（arm/v7）下执行。
+#      sqlite3@5.1.6 官方没有 armv7 预编译包，必须源码编译。
+#   3. BUILD_SEQUENCIAL=1 用 ENV 而不是命令前缀 —— 上游原版里这个变量只修饰了
+#      `yarn config set`，根本没传给 `yarn install`，是个 bug。
+#   4. 不再安装 cairo/pango/jpeg/gif/rsvg 开发库：node-canvas 已被
+#      resolutions 替换成 .yarn/joplin-empty-package/ 空包，装了也白装。
+#
+# 注意：必须锁 Node 22。Node.js 从 24.0.0 起不再发布 armv7 预编译包。
+# =============================================================================
+# syntax=docker/dockerfile:1
+
+ARG NODE_VERSION=22
+
+# =============================================================================
+# Stage 1 - tsc-builder
+#   运行在 x86（BUILDPLATFORM），原生速度。
+#   产出：安装好的 node_modules + 编译好的 dist/（纯 JS，架构无关）
+# =============================================================================
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION} AS tsc-builder
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN corepack enable
+
+WORKDIR /build
+
+COPY .yarn/releases ./.yarn/releases
+COPY .yarn/patches  ./.yarn/patches
+COPY .yarn/joplin-empty-package ./.yarn/joplin-empty-package
+COPY package.json .
+COPY .yarnrc.yml .
+COPY yarn.lock .
+COPY gulpfile.js .
+COPY tsconfig.json .
+
+COPY packages/turndown ./packages/turndown
+COPY packages/turndown-plugin-gfm ./packages/turndown-plugin-gfm
+COPY packages/fork-htmlparser2 ./packages/fork-htmlparser2
+COPY packages/server/package*.json ./packages/server/
+COPY packages/fork-sax ./packages/fork-sax
+COPY packages/fork-uslug ./packages/fork-uslug
+COPY packages/htmlpack ./packages/htmlpack
+COPY packages/renderer ./packages/renderer
+COPY packages/tools ./packages/tools
+COPY packages/utils ./packages/utils
+COPY packages/lib ./packages/lib
+COPY packages/server ./packages/server
+
+# Server 用不到 onenote-converter（Rust -> WASM），从依赖里摘掉
+RUN sed --in-place '/onenote-converter/d' ./packages/lib/package.json
+
+# 强制串行构建：避免多个 tsc 进程并发。
+# 注意必须用 ENV，写在 RUN 命令前面当前缀是传不进 yarn install 的。
+ENV BUILD_SEQUENCIAL=1
+
+RUN --mount=type=cache,target=/build/.yarn/cache \
+    --mount=type=cache,target=/build/.yarn/berry/cache \
+    yarn config set cacheFolder /build/.yarn/cache \
+    && yarn install --inline-builds
+
+# 删掉所有 x86 原生二进制 —— 它们是 node_modules 里唯一架构相关的东西。
+# sharp 一并删掉：它只是 @joplin/lib 的 devDependency，且 Server 端从不加载
+# （shimInit({ nodeSqlite }) 没传 sharp，sharpEnabled() 恒为 false）。
+RUN find /build/node_modules /build/packages/*/node_modules \
+        -name '*.node' -delete 2>/dev/null; \
+    rm -rf /build/node_modules/@img \
+           /build/node_modules/sharp \
+           /build/packages/*/node_modules/@img \
+           /build/packages/*/node_modules/sharp; \
+    echo "=== 已清理 x86 原生二进制，剩余 .node 文件： ==="; \
+    find /build -name '*.node' | head -20; \
+    echo "=== dist 产物检查 ==="; \
+    ls -la /build/packages/server/dist/app.js
+
+# =============================================================================
+# Stage 2 - native-builder
+#   运行在 arm/v7（TARGETPLATFORM，QEMU 模拟）。
+#   只做一件事：把 sqlite3 从源码编译成 armv7 的 .node
+#
+#   注：下面两处 --platform=$TARGETPLATFORM 是默认值，buildx 会报
+#   RedundantTargetPlatform 警告。这里显式写出来是为了表达"这一阶段必须跑在
+#   目标架构下"，可读性优先，警告可以忽略。
+# =============================================================================
+FROM --platform=$TARGETPLATFORM node:${NODE_VERSION} AS native-builder
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3 make g++ tini \
+    && rm -rf /var/lib/apt/lists/*
+
+# sqlite3@5.1.6 自带 node-gyp@8.x，在 Node 22 上可能不兼容。
+# 装一个新版 node-gyp 并强制 npm 使用它。
+RUN npm install -g node-gyp@11.5.0
+ENV npm_config_node_gyp=/usr/local/lib/node_modules/node-gyp/bin/node-gyp.js
+
+WORKDIR /build
+COPY --from=tsc-builder /build /build
+
+# nmHoistingLimits: workspaces 意味着 sqlite3 可能落在根目录或某个 workspace
+# 下，全部遍历一遍。
+# 说明：npm rebuild 会执行 sqlite3 的 install 脚本
+#       = node-pre-gyp install --fallback-to-build
+#       加上 --build-from-source 跳过预编译下载（armv7 本来也没有）
+RUN set -e; \
+    found=0; \
+    for d in /build/node_modules/sqlite3 /build/packages/*/node_modules/sqlite3; do \
+        if [ -d "$d" ]; then \
+            found=1; \
+            echo ">>> 编译 sqlite3: $d"; \
+            (cd "$d" && npm rebuild --build-from-source); \
+        fi; \
+    done; \
+    if [ "$found" = "0" ]; then echo "!!! 没找到 sqlite3 目录，检查依赖树"; exit 1; fi
+
+# 校验产物确实是 armv7 的 32 位 ELF
+RUN find /build -name 'node_sqlite3.node' -exec ls -la {} \; \
+    && find /build -name 'node_sqlite3.node' -exec file {} \;
+
+# =============================================================================
+# Stage 3 - 最终运行镜像
+# =============================================================================
+FROM --platform=$TARGETPLATFORM node:${NODE_VERSION}-slim
+
+ARG user=joplin
+
+RUN useradd --create-home --shell /bin/bash $user
+
+# tini 必须从 armv7 阶段拷贝（x86 阶段里的 tini 是 x86 二进制，跑不起来）
+COPY --from=native-builder /usr/bin/tini /usr/local/bin/tini
+
+# 装 PM2，并把 PM2 数据目录固定下来，避免依赖用户 home
+RUN npm i -g pm2@5.4.3 && mkdir -p /opt/pm2 && chown -R $user:$user /opt/pm2
+ENV PM2_HOME=/opt/pm2
+
+USER $user
+
+COPY --chown=$user:$user --from=native-builder /build/packages      /home/$user/packages
+COPY --chown=$user:$user --from=native-builder /build/node_modules  /home/$user/node_modules
+
+# 锁定特定版本的 pm2-logrotate：pm2 默认会拉 latest，曾有被用于传播恶意软件的先例
+# Ref: https://github.com/laurent22/joplin/issues/12754
+RUN pm2 install https://registry.npmjs.org/pm2-logrotate/-/pm2-logrotate-3.0.0.tgz \
+	&& pm2 set pm2-logrotate:max_size 100MB \
+	&& pm2 set pm2-logrotate:retain 5 \
+	&& pm2 set pm2-logrotate:compress true
+
+ENV NODE_ENV=production
+ENV RUNNING_IN_DOCKER=1
+
+# 32 位进程地址空间只有 3GB，V8 堆上限约 1~1.5GB。
+# 显式压一下，避免运行时 OOM killer 直接干掉进程。
+ENV NODE_OPTIONS=--max-old-space-size=768
+
+EXPOSE 22300
+
+WORKDIR /home/$user/packages/server
+
+ENTRYPOINT ["tini", "--"]
+CMD ["yarn", "start-prod"]
+
+# -----------------------------------------------------------------------------
+# Build-time metadata
+# https://github.com/opencontainers/image-spec/blob/master/annotations.md
+# -----------------------------------------------------------------------------
+ARG BUILD_DATE
+ARG REVISION
+ARG VERSION
+ARG SOURCE
+LABEL org.opencontainers.image.created="$BUILD_DATE" \
+      org.opencontainers.image.title="Joplin Server (armv7)" \
+      org.opencontainers.image.description="Docker image for Joplin Server - linux/arm/v7" \
+      org.opencontainers.image.url="https://joplinapp.org/" \
+      org.opencontainers.image.revision="$REVISION" \
+      org.opencontainers.image.source="$SOURCE" \
+      org.opencontainers.image.version="$VERSION"
