@@ -121,16 +121,29 @@ RUN set -e; \
         fi; \
     done
 
+# 清掉 node-gyp 的编译中间产物（build-tmp-* / build，含 .o 文件，几十 MB）
+RUN rm -rf /build/node_modules/sqlite3/build-tmp-* \
+           /build/node_modules/sqlite3/build \
+           /build/packages/*/node_modules/sqlite3/build-tmp-* \
+           /build/packages/*/node_modules/sqlite3/build
+
 # 双重校验：数量对得上 + 确实是 armv7 32 位 ELF
-RUN echo "--- 产物清单 ---" \
-    && find /build -name 'node_sqlite3.node' -exec ls -la {} \; \
+# 注意：只统计 lib/binding/ 下的产物。node-gyp 会在 build-tmp-napi-v6/ 里留
+# 同名中间文件（且与 binding 是硬链接），全盘 find 会多数出来导致误判。
+RUN echo "--- 产物清单（仅 lib/binding）---" \
+    && find /build -path '*/sqlite3/lib/binding/*' -name 'node_sqlite3.node' -exec ls -la {} \; \
     && echo "--- ELF 架构校验（应为 ARM / 32-bit）---" \
-    && for f in $(find /build -name 'node_sqlite3.node'); do file "$f"; done \
+    && for f in $(find /build -path '*/sqlite3/lib/binding/*' -name 'node_sqlite3.node'); do file "$f"; done \
     && echo "--- 数量校验 ---" \
-    && N_BIN=$(find /build -name 'node_sqlite3.node' | wc -l); \
+    && N_BIN=$(find /build -path '*/sqlite3/lib/binding/*' -name 'node_sqlite3.node' | wc -l); \
        N_DIR=$(ls -d /build/node_modules/sqlite3 /build/packages/*/node_modules/sqlite3 2>/dev/null | wc -l); \
-       echo "产物 $N_BIN 个 / sqlite3 目录 $N_DIR 个"; \
-       [ "$N_BIN" = "$N_DIR" ] || { echo "!!! 数量不匹配"; exit 1; }
+       echo "binding 产物 $N_BIN 个 / sqlite3 目录 $N_DIR 个"; \
+       [ "$N_BIN" = "$N_DIR" ] || { echo "!!! 数量不匹配"; exit 1; } \
+    && echo "--- 断言：不得出现 aarch64 ---" \
+    && if find /build -path '*/sqlite3/lib/binding/*' -name 'node_sqlite3.node' -exec file {} \; | grep -qi aarch64; then \
+           echo "!!! 产物被编成了 aarch64，架构不对"; exit 1; \
+       fi; \
+       echo "校验通过"
 
 # =============================================================================
 # Stage 3 - 最终运行镜像
