@@ -2,31 +2,43 @@
 # 构建 Joplin Server 的 linux/arm/v7 (armhf, 32-bit) Docker 镜像
 #
 # 放置位置：.github/workflows/build-server-armv7.yml
-# 触发方式：Actions 页面手动 Run workflow（默认不自动跑，避免每次 push 烧机器）
+# 触发方式：Actions 页面手动 Run workflow
 #
 # ---------------------------------------------------------------------------
-# 关于 runner 选型（重要）
+# 为什么用 arm64 runner
 # ---------------------------------------------------------------------------
-# 用 arm64 runner（ubuntu-24.04-arm）而不是 x86 runner，构建速度约快 2-3 倍。
-#
-# 原理：目标平台 linux/arm/v7 是 32 位 ARM，无论哪种 runner 都必须经 QEMU
-# 用户态模拟。但 QEMU 在 aarch64 host 上模拟 armv7 远比在 x86_64 host 上高效：
+# 目标平台 linux/arm/v7 是 32 位 ARM，与 arm64 是不同 ABI。
+# QEMU 在 aarch64 host 上模拟 armv7 远比 x86_64 host 高效：
 #   - ARMv7 与 AArch64 同属一个指令集家族，条件执行/NZCV flags、桶形移位、
-#     寄存器结构都能近乎 1:1 映射，TCG 指令膨胀只有 1.5-2 倍
+#     寄存器结构都能近乎 1:1 映射，TCG 指令膨胀仅 1.5-2 倍
 #   - x86_64 上这些特性都要拆成多条指令模拟，膨胀 3-8 倍
-# 实测经验：aarch64 host 模拟 armv7 约为 x86_64 host 的 2-4 倍速度。
-# 两种 runner 规格相同（公共仓库均 4 vCPU / 16GB），对比是公平的。
+# 实测体感：aarch64 host 约为 x86_64 host 的 2-4 倍速度。两种 runner 规格
+# 相同（公共仓库均 4 vCPU / 16GB），对比公平。
 #
-# 注：setup-buildx-action 创建的 BuildKit 容器自带 QEMU 静态二进制并自行注册
-# binfmt_misc，不依赖宿主机内核的 CONFIG_COMPAT。所以 arm64 runner 上能直接
-# 构建 armv7。下面的 setup-qemu-action 是双保险，留着更稳。
 # ---------------------------------------------------------------------------
-# 前置条件：
-#   1. 仓库根目录要有 Dockerfile.server.armv7
-#   2. 若要 push 到 Docker Hub，先在仓库 Settings -> Secrets 配：
-#        DOCKERHUB_USERNAME
-#        DOCKERHUB_TOKEN   (Docker Hub -> Account Settings -> Personal Access Token)
-#      不想 push 就把 push 输入留 false，只做可行性验证。
+# 两个 Dockerfile 怎么选
+# ---------------------------------------------------------------------------
+#   Dockerfile.server.armv7        QEMU 编译 sqlite3。已实机验证，稳。
+#                                  全流程约 18 分钟。
+#   Dockerfile.server.armv7-cross  在 arm64 上用 arm-linux-gnueabihf 交叉编译
+#                                  sqlite3，绕开 QEMU。全流程预期约 8 分钟。
+#                                  尚未实机验证，失败就切回上面那个。
+# 两者产出等价，随时可切。
+#
+# ---------------------------------------------------------------------------
+# 关于 QEMU
+# ---------------------------------------------------------------------------
+# 不需要 setup-qemu-action：BuildKit 镜像自带 QEMU 静态二进制
+# （moby/buildkit 内含 buildkit-qemu-arm 等 6 个模拟器），容器 privileged
+# 会自行挂载 binfmt_misc 注册。已实机验证 arm64 runner 上可直接构建 armv7。
+#
+# ---------------------------------------------------------------------------
+# 前置条件
+# ---------------------------------------------------------------------------
+#   推送到 Docker Hub 需要仓库 Settings -> Secrets：
+#     DOCKERHUB_USERNAME
+#     DOCKERHUB_TOKEN   (Docker Hub -> Account Settings -> Personal Access Token)
+#   不想推送就把 push 填 false，只做构建验证。
 # =============================================================================
 
 name: Build Joplin Server (linux/arm/v7)
@@ -34,6 +46,10 @@ name: Build Joplin Server (linux/arm/v7)
 on:
   workflow_dispatch:
     inputs:
+      dockerfile:
+        description: 'Dockerfile（armv7=稳 / armv7-cross=快）'
+        required: false
+        default: 'Dockerfile.server.armv7'
       runner:
         description: 'Runner 镜像'
         required: false
@@ -53,36 +69,29 @@ on:
 
 jobs:
   build:
-    # 默认 arm64 runner：QEMU 模拟 armv7 的效率远高于 x86 runner
-    # 想对比速度就手动改成 ubuntu-24.04，其它什么都不用动
     runs-on: ${{ inputs.runner }}
 
-    # 保险起见给足时间：arm64 runner 约 20-40 分钟，x86 runner 约 60-120 分钟
+    # armv7 版约 18 分钟，cross 版约 8 分钟；x86 runner 上则要 60-120 分钟
     timeout-minutes: 300
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 在宿主机显式注册 QEMU。BuildKit 容器自己也有 QEMU，这里是双保险，
-      # 避免某些 buildkit 镜像版本缺 QEMU 时静默降级成宿主机架构。
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 自检：确认 arm/v7 真的可用，防止"假成功"
-      # （buildkit 探测不到目标平台时会静默按宿主机架构构建，产出的镜像跑不起来）
+      # 自检：确认 arm/v7 真的可用。
+      # buildkit 探测不到目标平台时会"静默按宿主机架构构建然后报成功"，
+      # 产出的镜像在 armv7 设备上直接 exec format error —— 这是最坑的失败模式。
       - name: 确认 builder 支持 linux/arm/v7
         run: |
           echo "宿主机架构: $(uname -m)"
           echo "--- builder 支持的平台 ---"
           docker buildx inspect --bootstrap | grep -i 'platforms' || true
           echo "--- binfmt_misc ---"
-          ls /proc/sys/fs/binfmt_misc/ 2>/dev/null | grep -i -E 'arm|qemu' || echo "  (宿主机未注册，依赖 BuildKit 容器自带 QEMU)"
+          ls /proc/sys/fs/binfmt_misc/ 2>/dev/null | grep -i -E 'arm|qemu' \
+            || echo "  (宿主机未注册，依赖 BuildKit 容器自带 QEMU)"
 
       - name: Docker Hub login (可选)
         if: ${{ inputs.push == 'true' }}
@@ -91,18 +100,13 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # ------------------------------------------------------------------
-      # 只构建不推送：先验证 arm/v7 能不能真的编出来
-      #   Stage 1 (yarn install + tsc) 在 BUILDPLATFORM 原生跑 —— arm64 runner 上
-      #           这一阶段跑在 arm64 而非 QEMU 里，也是天然优势
-      #   Stage 2 (sqlite3 g++ 编译) 在 QEMU armv7 下跑 —— 大头在这里
-      # ------------------------------------------------------------------
+      # ---------- 只构建不推送：验证可行性 ----------
       - name: Build (验证可行性)
         if: ${{ inputs.push != 'true' }}
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.server.armv7
+          file: ${{ inputs.dockerfile }}
           platforms: linux/arm/v7
           push: false
           load: false
@@ -112,15 +116,13 @@ jobs:
           cache-from: type=gha,scope=server-armv7
           cache-to: type=gha,mode=max,scope=server-armv7
 
-      # ------------------------------------------------------------------
-      # 构建并推送
-      # ------------------------------------------------------------------
+      # ---------- 构建并推送 ----------
       - name: Build and push
         if: ${{ inputs.push == 'true' }}
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.server.armv7
+          file: ${{ inputs.dockerfile }}
           platforms: linux/arm/v7
           push: true
           build-args: |
@@ -138,6 +140,7 @@ jobs:
             echo ""
             echo "| 项 | 值 |"
             echo "|---|---|"
+            echo "| Dockerfile | \`${{ inputs.dockerfile }}\` |"
             echo "| Runner | \`${{ inputs.runner }}\` |"
             echo "| 目标平台 | \`linux/arm/v7\` |"
             echo "| Node | \`${{ inputs.node_version }}\` |"

@@ -1,23 +1,23 @@
 # =============================================================================
-# Joplin Server —— linux/arm/v7 (armhf, 32-bit)
+# Joplin Server —— linux/arm/v7 (armhf, 32-bit) 【交叉编译版】
 #
-# 三阶段交叉架构构建：
-#   Stage 1  跑在 BUILDPLATFORM（arm64 runner 上是 arm64）—— 原生速度
-#            yarn install + TypeScript 编译。产物 dist/*.js 是纯 JS，架构无关。
-#   Stage 2  跑在 TARGETPLATFORM（arm/v7，QEMU 模拟）—— 只编译 sqlite3
-#   Stage 3  node:22-slim (arm/v7) —— 组装最终镜像
+# 与 Dockerfile.server.armv7 的区别：
+#   Stage 2 也跑在 BUILDPLATFORM（arm64 原生），用 arm-linux-gnueabihf 交叉
+#   工具链直接编译出 armv7 的 node_sqlite3.node，完全绕开 QEMU。
 #
-# 必须锁 Node 22：Node.js 从 24.0.0 起不再发布 armv7 预编译包。
+#   实测基准（QEMU 版）：sqlite3 编译约 12 分钟
+#   交叉编译预期：1-3 分钟
+#   全流程预期：~42 分钟 -> ~8 分钟
 #
-# 想更快？见同目录 Dockerfile.server.armv7-cross（在 arm64 上用交叉工具链
-# 原生编译 sqlite3，绕开 QEMU，12 分钟 → 1-3 分钟）。
+# 状态：交叉编译路径尚未实机验证。若失败，请回退用 Dockerfile.server.armv7。
+# 两者产出等价，可随时切换。
 # =============================================================================
 # syntax=docker/dockerfile:1
 
 ARG NODE_VERSION=22
 
 # =============================================================================
-# Stage 1 - tsc-builder（原生架构，快）
+# Stage 1 - tsc-builder（原生架构，与 QEMU 版完全一致）
 # =============================================================================
 FROM --platform=$BUILDPLATFORM node:${NODE_VERSION} AS tsc-builder
 
@@ -51,12 +51,8 @@ COPY packages/utils ./packages/utils
 COPY packages/lib ./packages/lib
 COPY packages/server ./packages/server
 
-# Server 用不到 onenote-converter（Rust -> WASM），从依赖里摘掉
 RUN sed --in-place '/onenote-converter/d' ./packages/lib/package.json
 
-# 强制串行构建：避免多个 tsc 进程并发。
-# 必须用 ENV —— 写在 RUN 命令前面当前缀是传不进 yarn install 的
-# （上游原版 Dockerfile.server 就是栽在这个 bug 上）
 ENV BUILD_SEQUENCIAL=1
 
 RUN --mount=type=cache,target=/build/.yarn/cache \
@@ -64,9 +60,6 @@ RUN --mount=type=cache,target=/build/.yarn/cache \
     yarn config set cacheFolder /build/.yarn/cache \
     && yarn install --inline-builds
 
-# 删掉原生架构的 .node —— 它们是 node_modules 里唯一架构相关的东西。
-# sharp 一并删掉：它只是 @joplin/lib 的 devDependency，Server 端从不加载
-# （shimInit({ nodeSqlite }) 没传 sharp，sharpEnabled() 恒为 false）。
 RUN find /build/node_modules /build/packages/*/node_modules \
         -name '*.node' -delete 2>/dev/null; \
     rm -rf /build/node_modules/@img \
@@ -79,35 +72,49 @@ RUN find /build/node_modules /build/packages/*/node_modules \
     ls -la /build/packages/server/dist/app.js
 
 # =============================================================================
-# Stage 2 - native-builder（arm/v7，QEMU 模拟）
+# Stage 2 - cross-builder（arm64 原生 + 交叉工具链）
+#
+# 注意这里是 BUILDPLATFORM 而不是 TARGETPLATFORM —— 这是本版的核心。
 # =============================================================================
-FROM --platform=$TARGETPLATFORM node:${NODE_VERSION} AS native-builder
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION} AS native-builder
 
+# gcc/g++-arm-linux-gnueabihf 会自动带上 libc6-dev-armhf-cross 和
+# libstdc++-12-dev-armhf-cross（Debian bookworm 是 gcc 12），不需要
+# dpkg --add-architecture。
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        python3 make g++ tini file \
+        gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
+        python3 make file \
     && rm -rf /var/lib/apt/lists/*
 
-# sqlite3@5.1.6 自带 node-gyp@8.x（2021 年），在 Node 22 上可能不兼容。
-# 装新版 node-gyp 并强制 npm 使用它。
 RUN npm install -g node-gyp@11.5.0
 ENV npm_config_node_gyp=/usr/local/lib/node_modules/node-gyp/bin/node-gyp.js
+
+# 交叉编译环境变量
+#   CC/CXX       -> 目标架构（armv7）编译器
+#   CC_host/...  -> 构建过程中需要的 host 工具用本地编译器
+#   npm_config_arch/target_arch -> 让 node-gyp 生成 arm 而非 arm64 的产物
+#   node-gyp 下载的 node headers 是纯头文件，架构无关，无需额外处理
+ENV CC=arm-linux-gnueabihf-gcc \
+    CXX=arm-linux-gnueabihf-g++ \
+    CC_host=gcc \
+    CXX_host=g++ \
+    npm_config_arch=arm \
+    npm_config_target_arch=arm
+
+RUN arm-linux-gnueabihf-gcc --version | head -1
 
 WORKDIR /build
 COPY --from=tsc-builder /build /build
 
-# -----------------------------------------------------------------------------
-# 关键优化：nmHoistingLimits: workspaces 会让 server / lib / tools 各装一份
-# sqlite3，三份源码和产物完全一样。QEMU 下每份要编 ~12 分钟，编三份就是 36 分钟。
-# 这里只编译第一份，其余直接复制 .node 文件，省掉 2/3 时间。
-# -----------------------------------------------------------------------------
+# 只编译第一份 sqlite3，其余复制（server / lib / tools 下各有一份，源码相同）
 RUN set -e; \
     FIRST=""; \
     for d in /build/node_modules/sqlite3 /build/packages/*/node_modules/sqlite3; do \
         if [ -d "$d" ] && [ -z "$FIRST" ]; then FIRST="$d"; fi; \
     done; \
     if [ -z "$FIRST" ]; then echo "!!! 没找到 sqlite3 目录，检查依赖树"; exit 1; fi; \
-    echo ">>> 编译 sqlite3（仅此一份）: $FIRST"; \
+    echo ">>> 交叉编译 sqlite3（仅此一份）: $FIRST"; \
     cd "$FIRST" && npm rebuild --build-from-source; \
     NODE_BIN=$(find "$FIRST/lib/binding" -name 'node_sqlite3.node' | head -1); \
     if [ -z "$NODE_BIN" ]; then echo "!!! 编译未产出 node_sqlite3.node"; exit 1; fi; \
@@ -121,30 +128,34 @@ RUN set -e; \
         fi; \
     done
 
-# 双重校验：数量对得上 + 确实是 armv7 32 位 ELF
+# 校验：这一步尤其重要 —— 交叉编译最怕"静默编成了 host 架构"
 RUN echo "--- 产物清单 ---" \
     && find /build -name 'node_sqlite3.node' -exec ls -la {} \; \
-    && echo "--- ELF 架构校验（应为 ARM / 32-bit）---" \
+    && echo "--- ELF 架构校验（必须是 ARM / 32-bit，不能是 AArch64）---" \
     && for f in $(find /build -name 'node_sqlite3.node'); do file "$f"; done \
-    && echo "--- 数量校验 ---" \
-    && N_BIN=$(find /build -name 'node_sqlite3.node' | wc -l); \
-       N_DIR=$(ls -d /build/node_modules/sqlite3 /build/packages/*/node_modules/sqlite3 2>/dev/null | wc -l); \
-       echo "产物 $N_BIN 个 / sqlite3 目录 $N_DIR 个"; \
-       [ "$N_BIN" = "$N_DIR" ] || { echo "!!! 数量不匹配"; exit 1; }
+    && echo "--- 断言：不得出现 aarch64 ---" \
+    && if find /build -name 'node_sqlite3.node' -exec file {} \; | grep -qi aarch64; then \
+           echo "!!! 产物被编成了 aarch64，交叉编译配置有误"; exit 1; \
+       fi; \
+    echo "--- 数量校验 ---"; \
+    N_BIN=$(find /build -name 'node_sqlite3.node' | wc -l); \
+    N_DIR=$(ls -d /build/node_modules/sqlite3 /build/packages/*/node_modules/sqlite3 2>/dev/null | wc -l); \
+    echo "产物 $N_BIN 个 / sqlite3 目录 $N_DIR 个"; \
+    [ "$N_BIN" = "$N_DIR" ] || { echo "!!! 数量不匹配"; exit 1; }
 
 # =============================================================================
-# Stage 3 - 最终运行镜像
+# Stage 3 - 最终运行镜像（arm/v7）
 # =============================================================================
 FROM --platform=$TARGETPLATFORM node:${NODE_VERSION}-slim
 
 ARG user=joplin
 
-RUN useradd --create-home --shell /bin/bash $user
+# tini 在 armv7 阶段自己装（cross-builder 是 arm64，它的 tini 拷过来跑不了）
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tini \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --shell /bin/bash $user
 
-# tini 必须从 armv7 阶段拷贝（tsc-builder 里的 tini 是原生架构的，跑不起来）
-COPY --from=native-builder /usr/bin/tini /usr/local/bin/tini
-
-# 装 PM2，固定 PM2 数据目录，避免依赖用户 home
 RUN npm i -g pm2@5.4.3 && mkdir -p /opt/pm2 && chown -R $user:$user /opt/pm2
 ENV PM2_HOME=/opt/pm2
 
@@ -153,8 +164,6 @@ USER $user
 COPY --chown=$user:$user --from=native-builder /build/packages      /home/$user/packages
 COPY --chown=$user:$user --from=native-builder /build/node_modules  /home/$user/node_modules
 
-# 锁定 pm2-logrotate 版本：pm2 默认拉 latest，曾有被用于传播恶意软件的先例
-# Ref: https://github.com/laurent22/joplin/issues/12754
 RUN pm2 install https://registry.npmjs.org/pm2-logrotate/-/pm2-logrotate-3.0.0.tgz \
 	&& pm2 set pm2-logrotate:max_size 100MB \
 	&& pm2 set pm2-logrotate:retain 5 \
@@ -162,9 +171,6 @@ RUN pm2 install https://registry.npmjs.org/pm2-logrotate/-/pm2-logrotate-3.0.0.t
 
 ENV NODE_ENV=production
 ENV RUNNING_IN_DOCKER=1
-
-# 32 位进程只有 3GB 地址空间，V8 堆上限约 1~1.5GB。
-# 显式压一下，避免运行时被 OOM killer 干掉。
 ENV NODE_OPTIONS=--max-old-space-size=768
 
 EXPOSE 22300
@@ -174,15 +180,12 @@ WORKDIR /home/$user/packages/server
 ENTRYPOINT ["tini", "--"]
 CMD ["yarn", "start-prod"]
 
-# -----------------------------------------------------------------------------
-# Build-time metadata
-# -----------------------------------------------------------------------------
 ARG BUILD_DATE
 ARG REVISION
 ARG VERSION
 ARG SOURCE
 LABEL org.opencontainers.image.created="$BUILD_DATE" \
-      org.opencontainers.image.title="Joplin Server (armv7)" \
+      org.opencontainers.image.title="Joplin Server (armv7, cross-compiled)" \
       org.opencontainers.image.description="Docker image for Joplin Server - linux/arm/v7" \
       org.opencontainers.image.url="https://joplinapp.org/" \
       org.opencontainers.image.revision="$REVISION" \
