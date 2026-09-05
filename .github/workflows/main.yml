@@ -21,34 +21,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # --- 针对 ARM64 节点的 wasm-pack 修复步骤开始 ---
-      - name: Set up Rust (ARM64 only)
-        if: matrix.arch == 'arm64'
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-pc-windows-msvc
-
-      - name: Cache Cargo wasm-pack (ARM64 only)
-        if: matrix.arch == 'arm64'
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin/wasm-pack.exe
-          key: ${{ runner.os }}-wasm-pack-v0.13.1
-
-      - name: Install native wasm-pack via Cargo (ARM64 only)
-        if: matrix.arch == 'arm64'
-        shell: powershell
-        run: |
-          if (!(Test-Path "$env:USERPROFILE\.cargo\bin\wasm-pack.exe")) {
-            cargo install wasm-pack
-          }
-
-      - name: Set WASM_PACK_BINARY_PATH for Node.js (ARM64 only)
-        if: matrix.arch == 'arm64'
-        shell: powershell
-        run: |
-          echo "WASM_PACK_BINARY_PATH=$env:USERPROFILE\.cargo\bin\wasm-pack.exe" >> $env:GITHUB_ENV
-      # --- 针对 ARM64 节点的 wasm-pack 修复步骤结束 ---
 
       # setup-node 会根据 runner.os 和 yarn.lock 自动隔离缓存
       - name: Setup Node.js
@@ -59,7 +31,7 @@ jobs:
           cache: 'yarn'
 
       - name: Install Dependencies
-        run: yarn workspaces foreach --from @joplin/app-desktop -R --topological-dev run build
+        run: yarn workspaces focus app-desktop
 
       - name: Package Desktop App for Windows
         env:
