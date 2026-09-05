@@ -13137,7 +13137,6 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@joplin/onenote-converter@workspace:packages/onenote-converter"
   dependencies:
-    wasm-pack: "npm:0.13.1"
     yargs: "npm:17.7.2"
   languageName: unknown
   linkType: soft
@@ -59149,17 +59148,6 @@ __metadata:
   version: 1.5.1
   resolution: "wasm-feature-detect@npm:1.5.1"
   checksum: 10/e5a63a0a4abe78227f851b631c6079095a59dbc6e77c9c1fe65358cb2618368b762a1e8a75d43447e42afffe574f143de5497fac3dac771444868b6e7826b269
-  languageName: node
-  linkType: hard
-
-"wasm-pack@npm:0.13.1":
-  version: 0.13.1
-  resolution: "wasm-pack@npm:0.13.1"
-  dependencies:
-    binary-install: "npm:^1.0.1"
-  bin:
-    wasm-pack: run.js
-  checksum: 10/5031151cc085487707e7f5e3a4057fb27b1dbc5ac5663a1a46725488ff3d4672f49a8a11ebdff8247857c03adce1cdf7615ce0790f19c622400e926a6e24796d
   languageName: node
   linkType: hard
 

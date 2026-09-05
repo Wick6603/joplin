@@ -31,10 +31,11 @@ jobs:
           cache: 'yarn'
 
       - name: Install Dependencies
-        run: yarn workspaces focus @joplin/app-desktop @joplin/default-plugins @joplin/tools  @joplin/lib
+        run: yarn install --no-immutable
 
       - name: Package Desktop App for Windows
         env:
+          SKIP_ONENOTE_CONVERTER_BUILD: 1
           SIGN_APPLICATION: 0        # 禁用 sign.js 签名
           CSC_LINK_IGNORE: true      # 忽略 electron-builder 证书检查
           ELECTRON_BUILDER_ALLOW_GITHUB_AUTO_PUBLISH: false # 禁用自动发布
