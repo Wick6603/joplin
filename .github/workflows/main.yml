@@ -59,7 +59,7 @@ jobs:
           cache: 'yarn'
 
       - name: Install Dependencies
-        run: yarn install --no-immutable
+        run: yarn workspaces foreach --from @joplin/app-desktop -R --topological-dev run build
 
       - name: Package Desktop App for Windows
         env:
