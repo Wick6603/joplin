@@ -31,7 +31,7 @@ jobs:
           cache: 'yarn'
 
       - name: Install Dependencies
-        run: yarn workspaces focus @joplin/app-desktop
+        run: yarn workspaces focus @joplin/app-desktop --all
 
       - name: Package Desktop App for Windows
         env:
