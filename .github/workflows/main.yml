@@ -29,7 +29,17 @@ jobs:
           node-version: '24'
           architecture: ${{ matrix.arch }}
           cache: 'yarn'
-
+      
+      - name: Remove unwanted workspace packages definition
+        run: |
+          # 彻底抹掉 mobile、server、cli 的 package.json，让 Yarn 自动忽略它们
+          rm -f packages/app-mobile/package.json
+          rm -f packages/server/package.json
+          rm -f packages/app-cli/package.json
+          rm -f packages/app-clipper/package.json
+          rm -f packages/onenote-converter/package.json
+          rm -f packages/transcribe/package.json
+          
       - name: Install Dependencies
         run: yarn install --no-immutable
 
